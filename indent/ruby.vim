@@ -31,6 +31,10 @@ set cpo&vim
 " 1. Variables {{{1
 " ============
 
+if !exists('g:ruby_no_hanging_indent')
+  let g:ruby_no_hanging_indent = 0
+end
+
 " Regex of syntax group names that are or delimit strings/symbols or are comments.
 let s:syng_strcom = '\<ruby\%(Regexp\|RegexpDelimiter\|RegexpEscape' .
       \ '\|Symbol\|String\|StringDelimiter\|StringEscape\|ASCIICode' .
@@ -341,7 +345,7 @@ function GetRubyIndent(...)
     call cursor(clnum, col)
     let bs = strpart('(){}[]', stridx(')}]', line[col - 1]) * 2, 2)
     if searchpair(escape(bs[0], '\['), '', bs[1], 'bW', s:skip_expr) > 0
-      if line[col-1]==')' && col('.') != col('$') - 1
+      if !g:ruby_no_hanging_indent && line[col-1]==')' && col('.') != col('$') - 1
         let ind = virtcol('.') - 1
       else
         let ind = indent(s:GetMSL(line('.')))
@@ -358,22 +362,26 @@ function GetRubyIndent(...)
   " If we have a deindenting keyword, find its match and indent to its level.
   " TODO: this is messy
   if s:Match(clnum, s:ruby_deindent_keywords)
-    call cursor(clnum, 1)
-    if searchpair(s:end_start_regex, s:end_middle_regex, s:end_end_regex, 'bW',
-          \ s:end_skip_expr) > 0
-      let msl  = s:GetMSL(line('.'))
-      let line = getline(line('.'))
+    if g:ruby_no_hanging_indent
+      return indent(clnum) - &sw
+    else
+      call cursor(clnum, 1)
+      if searchpair(s:end_start_regex, s:end_middle_regex, s:end_end_regex, 'bW',
+            \ s:end_skip_expr) > 0
+        let msl  = s:GetMSL(line('.'))
+        let line = getline(line('.'))
 
-      if strpart(line, 0, col('.') - 1) =~ '=\s*$' &&
-            \ strpart(line, col('.') - 1, 2) !~ 'do'
-        let ind = virtcol('.') - 1
-      elseif getline(msl) =~ '=\s*\(#.*\)\=$'
-        let ind = indent(line('.'))
-      else
-        let ind = indent(msl)
+        if strpart(line, 0, col('.') - 1) =~ '=\s*$' &&
+              \ strpart(line, col('.') - 1, 2) !~ 'do'
+          let ind = virtcol('.') - 1
+        elseif getline(msl) =~ '=\s*\(#.*\)\=$'
+          let ind = indent(line('.'))
+        else
+          let ind = indent(msl)
+        endif
       endif
-    endif
-    return ind
+      return ind
+    end
   endif
 
   " If we are in a multi-line string or line-comment, don't do anything to it.
@@ -429,7 +437,9 @@ function GetRubyIndent(...)
     let [opening, closing] = s:ExtraBrackets(lnum)
 
     if opening.pos != -1
-      if opening.type == '(' && searchpair('(', '', ')', 'bW', s:skip_expr) > 0
+      if g:ruby_no_hanging_indent
+        return ind + &sw
+      elseif opening.type == '(' && searchpair('(', '', ')', 'bW', s:skip_expr) > 0
         if col('.') + 1 == col('$')
           return ind + &sw
         else
@@ -472,15 +482,19 @@ function GetRubyIndent(...)
 
   let col = s:Match(lnum, s:ruby_indent_keywords)
   if col > 0
-    call cursor(lnum, col)
-    let ind = virtcol('.') - 1 + &sw
-    " TODO: make this better (we need to count them) (or, if a searchpair
-    " fails, we know that something is lacking an end and thus we indent a
-    " level
-    if s:Match(lnum, s:end_end_regex)
-      let ind = indent('.')
-    endif
-    return ind
+    if g:ruby_no_hanging_indent
+      return indent(lnum) + &sw
+    else
+      call cursor(lnum, col)
+      let ind = virtcol('.') - 1 + &sw
+      " TODO: make this better (we need to count them) (or, if a searchpair
+      " fails, we know that something is lacking an end and thus we indent a
+      " level
+      if s:Match(lnum, s:end_end_regex)
+        let ind = indent('.')
+      endif
+      return ind
+    end
   endif
 
   " 3.4. Work on the MSL line. {{{2
